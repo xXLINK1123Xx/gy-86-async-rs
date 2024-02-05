@@ -1,16 +1,6 @@
 #![no_std]
 
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+mod bits;
+mod device;
+pub mod hmc5883;
+pub mod mpu6050;

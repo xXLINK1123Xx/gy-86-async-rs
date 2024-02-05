@@ -8,6 +8,9 @@ license = "MIT"
 
 [dependencies]
 embedded-hal-async = "1.0.0"
+# panic-rtt-core = {version="0.2.1", optional=true}
+defmt ="0.3"
+libm = "0.2.1"
 
 [dependencies.nalgebra]
 default-features = false
