@@ -1,12 +1,3 @@
-//! All device constants used in the driver, mostly register addresses.
-//!
-//! NOTE: Earlier revisions of Datasheet and Register Map has way more info about interrupt usage,
-//! particularly rev 3.2
-//!
-//! #### Sources:
-//! * Register map (rev 3.2): https://arduino.ua/docs/RM-MPU-6000A.pdf
-//! * Datasheet (rev 3.2): https://www.cdiweb.com/datasheets/invensense/ps-mpu-6000a.pdf
-
 /// Gyro Sensitivity
 ///
 /// Measurements are scaled like this:
@@ -82,27 +73,6 @@ impl CONFIG {
     pub const EXT_SYNC_SET: BitBlock = BitBlock { bit: 5, length: 3 };
     /// Digital Low Pass Filter (DLPF) config
     pub const DLPF_CFG: BitBlock = BitBlock { bit: 2, length: 3 };
-}
-
-#[allow(non_camel_case_types)]
-#[derive(Copy, Clone, Debug)]
-pub struct HMC5883L_CONFIG;
-
-impl HMC5883L_CONFIG {
-    pub const ADDR: u8 = 0x1E; // Not Left Shifted
-    pub const REG_CONFIG_A: u8 = 0x00;
-    pub const REG_CONFIG_B: u8 = 0x01;
-    pub const REG_MODE: u8 = 0x02;
-    pub const REG_OUT_X_M: u8 = 0x03;
-    pub const REG_OUT_X_L: u8 = 0x04;
-    pub const REG_OUT_Z_M: u8 = 0x05;
-    pub const REG_OUT_Z_L: u8 = 0x06;
-    pub const REG_OUT_Y_M: u8 = 0x07;
-    pub const REG_OUT_Y_L: u8 = 0x08;
-    pub const REG_STATUS: u8 = 0x09;
-    pub const REG_IDENT_A: u8 = 0x0A;
-    pub const REG_IDENT_B: u8 = 0x0B;
-    pub const REG_IDENT_C: u8 = 0x0C;
 }
 
 #[allow(non_camel_case_types)]

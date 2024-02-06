@@ -1,10 +1,10 @@
 use crate::bits;
-use defmt::{debug, info, Format};
+use defmt::Format;
 use embedded_hal_async::{delay::DelayNs, i2c::I2c};
 use libm::{atan2f, powf, sqrtf};
 use nalgebra::{Vector2, Vector3};
 
-use crate::device::*;
+use crate::reg_data::mpu6050::*;
 
 /// PI, f32
 pub const PI: f32 = core::f32::consts::PI;
@@ -73,7 +73,6 @@ where
     pub fn new_with_addr_and_sens(
         i2c: I,
         delay: D,
-
         slave_addr: u8,
         arange: AccelRange,
         grange: GyroRange,
@@ -281,66 +280,6 @@ where
         Ok(())
     }
 
-    pub async fn setup_hmc5883l(&mut self) -> Result<(), Mpu6050Error<E>> {
-        self.write_byte_to(
-            HMC5883L_CONFIG::ADDR,
-            HMC5883L_CONFIG::REG_CONFIG_A,
-            0b00011000,
-        )
-        .await?; //Fill Slave0 DO
-        self.delay.delay_ms(10);
-
-        self.write_byte_to(
-            HMC5883L_CONFIG::ADDR,
-            HMC5883L_CONFIG::REG_CONFIG_B,
-            0b00100000,
-        )
-        .await?; //Fill Slave0 DO
-        self.delay.delay_ms(10);
-
-        self.write_byte_to(HMC5883L_CONFIG::ADDR, HMC5883L_CONFIG::REG_MODE, 0)
-            .await?;
-        self.delay.delay_ms(10);
-
-        Ok(())
-    }
-
-    pub async fn start_hmc5883l(&mut self) -> Result<(), Mpu6050Error<E>> {
-        self.write_byte_to(SLAVE0_CTRL::ADDR, HMC5883L_CONFIG::REG_MODE, 0)
-            .await?;
-
-        Ok(())
-    }
-
-    // pub async fn get_hmc_status(&mut self) -> Result<(u8, u8), Mpu6050Error<E>> {
-    //     let mut status = self
-    //         .read_bytes_from(SLAVE0_CTRL::ADDR, HMC5883L_CONFIG::REG_STATUS)
-    //         .await?;
-    //     self.delay.delay_ms(10);
-
-    //     status &= 0x3;
-
-    //     let isLocked = status & 0b10; // Lock bit
-    //     let isReady = status & 0b01;
-
-    //     Ok((isLocked, isReady))
-    // }
-
-    pub async fn setup_hmc5883l_read(&mut self) -> Result<(), Mpu6050Error<E>> {
-        self.write_byte(SLAVE0_CTRL::ADDR, HMC5883L_CONFIG::ADDR | 0x80) //Access HMC5883L into read mode
-            .await?;
-        self.delay.delay_ms(10);
-
-        self.write_byte(SLAVE0_CTRL::REG, HMC5883L_CONFIG::REG_MODE)
-            .await?; //HMC5883L REG for reading to take place
-        self.delay.delay_ms(10);
-
-        self.write_byte(SLAVE0_CTRL::CTRL, 0x80 | 0x07).await?; //Number of data bytes
-        self.delay.delay_ms(10);
-
-        Ok(())
-    }
-
     /// reset device
     pub async fn reset_device(&mut self) -> Result<(), Mpu6050Error<E>> {
         self.write_bit(PWR_MGMT_1::ADDR, PWR_MGMT_1::DEVICE_RESET, true)
@@ -484,22 +423,6 @@ where
 
         // According to revision 4.2
         Ok((raw_temp / TEMP_SENSITIVITY) + TEMP_OFFSET)
-    }
-
-    pub async fn get_mag(&mut self) -> Result<Vector3<i32>, Mpu6050Error<E>> {
-        let mut buf: [u8; 6] = [0; 6];
-        self.read_bytes_from(
-            HMC5883L_CONFIG::ADDR,
-            HMC5883L_CONFIG::REG_OUT_X_M,
-            &mut buf,
-        )
-        .await?;
-
-        Ok(Vector3::<i32>::new(
-            self.read_word_2c(&buf[0..2]),
-            self.read_word_2c(&buf[2..4]),
-            self.read_word_2c(&buf[4..6]),
-        ))
     }
 
     /// Writes byte to register
