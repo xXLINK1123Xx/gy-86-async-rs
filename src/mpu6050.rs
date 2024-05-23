@@ -1,5 +1,5 @@
 use crate::bits;
-use defmt::Format;
+use defmt::{info, Format};
 use embedded_hal_async::{delay::DelayNs, i2c::I2c};
 use libm::{atan2f, powf, sqrtf};
 use nalgebra::{Vector2, Vector3};
@@ -28,6 +28,8 @@ pub struct Mpu6050<I, D> {
     slave_addr: u8,
     acc_sensitivity: f32,
     gyro_sensitivity: f32,
+    gyro_offsets: Vector3<f32>,
+    acc_offsets: Vector3<f32>,
 }
 
 impl<I, D, E> Mpu6050<I, D>
@@ -44,6 +46,8 @@ where
             slave_addr: DEFAULT_SLAVE_ADDR,
             acc_sensitivity: ACCEL_SENS.0,
             gyro_sensitivity: GYRO_SENS.0,
+            gyro_offsets: Vector3::default(),
+            acc_offsets: Vector3::new(0.7001658, 0.5612311, 0.6707781),
         }
     }
 
@@ -55,6 +59,8 @@ where
             slave_addr: DEFAULT_SLAVE_ADDR,
             acc_sensitivity: arange.sensitivity(),
             gyro_sensitivity: grange.sensitivity(),
+            gyro_offsets: Vector3::default(),
+            acc_offsets: Vector3::new(0.7001658, 0.5612311, 0.6707781),
         }
     }
 
@@ -66,6 +72,8 @@ where
             slave_addr,
             acc_sensitivity: ACCEL_SENS.0,
             gyro_sensitivity: GYRO_SENS.0,
+            gyro_offsets: Vector3::default(),
+            acc_offsets: Vector3::new(0.7001658, 0.5612311, 0.6707781),
         }
     }
 
@@ -83,6 +91,8 @@ where
             slave_addr,
             acc_sensitivity: arange.sensitivity(),
             gyro_sensitivity: grange.sensitivity(),
+            gyro_offsets: Vector3::default(),
+            acc_offsets: Vector3::new(0.7001658, 0.5612311, 0.6707781),
         }
     }
 
@@ -91,7 +101,7 @@ where
         // MPU6050 has sleep enabled by default -> set bit 0 to wake
         // Set clock source to be PLL with x-axis gyroscope reference, bits 2:0 = 001 (See Register Map )
         self.write_byte(PWR_MGMT_1::ADDR, 0x01).await?;
-        self.delay.delay_ms(100);
+        self.delay.delay_ms(100).await;
         Ok(())
     }
 
@@ -101,8 +111,8 @@ where
     /// When the internal 8 MHz oscillator or an external source is chosen as the clock source,
     /// the MPU-60X0 can operate in low power modes with the gyroscopes disabled. Upon power up,
     /// the MPU-60X0clock source defaults to the internal oscillator. However, it is highly
-    /// recommended  that  the  device beconfigured  to  use  one  of  the  gyroscopes
-    /// (or  an  external  clocksource) as the clock reference for improved stability.
+    /// recommended  that  the  device be configured  to  use  one  of  the  gyroscopes
+    /// (or  an  external  clock source) as the clock reference for improved stability.
     /// The clock source can be selected according to the following table...."
     pub async fn set_clock_source(&mut self, source: CLKSEL) -> Result<(), Mpu6050Error<E>> {
         self.write_bits(
@@ -112,6 +122,77 @@ where
             source as u8,
         )
         .await
+    }
+
+    pub async fn calibrate_gyro(&mut self) -> Result<(), Mpu6050Error<E>> {
+        let mut offsets = Vector3::new(0.0, 0.0, 0.0);
+        for _ in 0..1000 {
+            let v = self.get_gyro().await.unwrap();
+            offsets += v;
+        }
+
+        offsets /= 1000.0;
+        self.gyro_offsets = offsets;
+
+        info!(
+            "Gyro offsets: ({}, {}, {})",
+            offsets.x, offsets.y, offsets.y
+        );
+        Ok(())
+    }
+
+    pub async fn calibrate_acc(&mut self) -> Result<(), Mpu6050Error<E>> {
+        let mut num_of_points = 0;
+        let mut x_sum = 0.0;
+        let mut y_sum = 0.0;
+        let mut x_squared_sum = 0.0;
+        let mut x_times_y_sum = 0.0;
+
+        info!("Orient the axis upwards against gravity");
+        self.delay.delay_ms(4000).await;
+        info!("Beginning to Calibrate Part 1 (Acceleration = 1g)");
+
+        for _ in 0..1000 {
+            num_of_points += 1;
+            let offset = self.get_acc().await?.y - 1.0;
+
+            x_sum += 1.0;
+            y_sum += offset;
+            x_squared_sum += 1.0;
+            x_times_y_sum += 1.0 * offset;
+        }
+
+        info!("Orient the axis downwards against gravity");
+        self.delay.delay_ms(4000).await;
+        info!("Beginning to Calibrate Part 2 (Acceleration = -1g)");
+
+        for _ in 0..1000 {
+            num_of_points += 1;
+            let offset = self.get_acc().await?.y + 1.0;
+
+            x_sum -= 1.0;
+            y_sum += offset;
+            x_squared_sum += 1.0;
+            x_times_y_sum += -1.0 * offset;
+        }
+
+        info!("Orient the axis perpendicular against gravity");
+        self.delay.delay_ms(4000).await;
+        info!("Beginning to Calibrate Part 3 (Acceleration = 0g)");
+
+        for _ in 0..1000 {
+            num_of_points += 1;
+            let offset = self.get_acc().await?.x + 0.0;
+
+            y_sum += offset;
+        }
+
+        let m = (num_of_points as f32 * x_times_y_sum - (x_sum * y_sum))
+            / ((num_of_points as f32 * x_squared_sum) - powf(x_sum, 2.0));
+        let b = (y_sum - (m * x_sum)) / num_of_points as f32;
+
+        info!("Acc offsets: ({}, {})", m, b); //formula for axis = m * axis_val + b
+        Ok(())
     }
 
     /// get current clock source
@@ -133,6 +214,7 @@ where
         self.set_accel_range(AccelRange::G2).await?;
         self.set_gyro_range(GyroRange::D250).await?;
         self.set_accel_hpf(ACCEL_HPF::_RESET).await?;
+        self.delay.delay_ms(2000).await;
         Ok(())
     }
 
@@ -247,11 +329,11 @@ where
     pub async fn enable_i2c_baypass(&mut self) -> Result<(), Mpu6050Error<E>> {
         self.write_byte(USER_CTRL_REG, 0).await?;
 
-        self.delay.delay_ms(10);
+        self.delay.delay_ms(10).await;
 
         self.write_byte(INT_PIN_CFG::ADDR, 2).await?;
 
-        self.delay.delay_ms(10);
+        self.delay.delay_ms(10).await;
 
         self.write_byte(INT_PIN_CFG::ADDR, 2).await?;
 
@@ -263,19 +345,19 @@ where
     pub async fn set_to_master(&mut self) -> Result<(), Mpu6050Error<E>> {
         self.write_byte(INT_PIN_CFG::ADDR, 0).await?;
 
-        self.delay.delay_ms(10);
+        self.delay.delay_ms(10).await;
 
         self.write_byte(USER_CTRL_REG, 0b00100010).await?;
 
-        self.delay.delay_ms(10);
+        self.delay.delay_ms(10).await;
 
         self.write_byte(CONFIG::I2C_MST_CTRL, 0b00001101).await?;
 
-        self.delay.delay_ms(10);
+        self.delay.delay_ms(10).await;
 
         self.write_byte(PWR_MGMT_1::ADDR, 0).await?;
 
-        self.delay.delay_ms(10);
+        self.delay.delay_ms(10).await;
 
         Ok(())
     }
@@ -284,7 +366,7 @@ where
     pub async fn reset_device(&mut self) -> Result<(), Mpu6050Error<E>> {
         self.write_bit(PWR_MGMT_1::ADDR, PWR_MGMT_1::DEVICE_RESET, true)
             .await?;
-        self.delay.delay_ms(100);
+        self.delay.delay_ms(100).await;
         // Note: Reset sets sleep to true! Section register map: resets PWR_MGMT to 0x40
         Ok(())
     }
@@ -403,6 +485,8 @@ where
         let mut acc = self.read_rot(ACC_REGX_H).await?;
         acc /= self.acc_sensitivity;
 
+        acc -= self.acc_offsets;
+
         Ok(acc)
     }
 
@@ -411,6 +495,19 @@ where
         let mut gyro = self.read_rot(GYRO_REGX_H).await?;
 
         gyro *= PI_180 / self.gyro_sensitivity;
+
+        gyro -= self.gyro_offsets;
+
+        Ok(gyro)
+    }
+
+    /// Gyro readings in deg/s
+    pub async fn get_gyro_deg(&mut self) -> Result<Vector3<f32>, Mpu6050Error<E>> {
+        let mut gyro = self.read_rot(GYRO_REGX_H).await?;
+
+        gyro *= PI_180 / self.gyro_sensitivity;
+
+        gyro *= 57.2958;
 
         Ok(gyro)
     }
