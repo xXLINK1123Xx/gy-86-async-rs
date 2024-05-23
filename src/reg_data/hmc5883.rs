@@ -11,6 +11,7 @@ impl HMC5883L_CONFIG {
     pub const REG_CONFIG_A: u8 = 0x00;
     pub const REG_CONFIG_B: u8 = 0x01;
     pub const REG_MODE: u8 = 0x02;
+    pub const REG_TEMP_OUTPUT_MSB: u8 = 0x31;
     pub const REG_OUT_X_M: u8 = 0x03;
     pub const REG_OUT_X_L: u8 = 0x04;
     pub const REG_OUT_Z_M: u8 = 0x05;
@@ -23,70 +24,22 @@ impl HMC5883L_CONFIG {
     pub const REG_IDENT_C: u8 = 0x0C;
 }
 
-/// Errors in this crate
-#[derive(Debug, Format)]
-pub enum HMC5883Error<CommE> {
-    /// Sensor communication error
-    Comm(CommE),
-
-    /// Sensor reading out of range
-    OutOfRange,
-
-    /// Configuration reads invalid
-    Configuration,
-
-    /// Unrecognized chip ID
-    UnknownChipId,
-}
-
-/// Gain settings ( in LSb/Gauss )
-/// One tesla (T) is equal to 104 gauss
+#[derive(Debug, Clone, Copy)]
 #[repr(u8)]
-pub enum GainSetting {
-    ///± 0.88 Ga  / 0.73 (mGa/LSb)
-    Gain1370 = 0b00000000,
-    ///± 1.30 Ga  / 0.92 (mGa/LSb)
-    Gain1090 = 0b00100000,
-    ///± 1.90 Ga  / 1.22 (mGa/LSb)
-    Gain0820 = 0b01000000,
-    ///± 2.50 Ga  / 1.52 (mGa/LSb)
-    Gain0660 = 0b01100000,
-    ///± 4.00 Ga  / 2.27 (mGa/LSb)
-    Gain0440 = 0b10000000,
-    ///± 4.70 Ga  / 2.56 (mGa/LSb)
-    Gain0390 = 0b10100000,
-    ///± 5.60 Ga  / 3.03 (mGa/LSb)
-    Gain0330 = 0b11000000,
-    ///± 8.10 Ga  / 4.35 (mGa/LSb)
-    Gain0230 = 0b11100000,
+pub enum Compass {
+    North = 0,
+    South = 1,
+    West = 2,
+    East = 3,
+    Up = 4,
+    Down = 5,
 }
 
-/// Output Data Rate settings in Hz
-#[repr(u8)]
-pub enum OdrSetting {
-    Odr0_75Hz = 0b000,
-    Odr1_5Hz = 0b001,
-    Odr3_0Hz = 0b010,
-    Odr7_5Hz = 0b011,
-    Odr15_0Hz = 0b100,
-    Odr30_0Hz = 0b110,
-    Odr220_0Hz = 0b111,
-}
-
-/// Configuring sample averaging
-#[repr(u8)]
-pub enum SampleAvgSetting {
-    AvgSamples1 = 0b00,
-    AvgSamples2 = 0b01,
-    AvgSamples4 = 0b10,
-    /// Average 8 samples
-    AvgSamples8 = 0b11,
-}
-
-/// Measurement mode settings
-#[repr(u8)]
-pub enum MeasurementModeSetting {
-    NormalMode = 0b00,
-    /// Positive bias current
-    PositiveBias = 0b01,
-}
+pub const COMPASS_HORIZONTAL_X_NORTH: u8 =
+    (((Compass::North as u8) << 6) | ((Compass::West as u8) << 3) | Compass::Up as u8) << 5;
+pub const COMPASS_HORIZONTAL_Y_NORTH: u8 =
+    (((Compass::East as u8) << 6) | ((Compass::North as u8) << 3) | Compass::Up as u8) << 5;
+pub const COMPASS_VERTICAL_X_EAST: u8 =
+    (((Compass::East as u8) << 6) | ((Compass::Up as u8) << 3) | (Compass::West as u8)) << 5;
+pub const COMPASS_VERTICAL_Y_WEST: u8 =
+    (((Compass::Up as u8) << 6) | ((Compass::West as u8) << 3) | (Compass::West as u8)) << 5;
